@@ -1,6 +1,7 @@
 from flygym import Fly, Simulation
 import numpy as np
-
+import gymnasium as gym
+from flygym.arena import BaseArena
 
 class CobarFly(Fly):
     def __init__(
@@ -180,9 +181,9 @@ class CobarFly(Fly):
             "joints": observation["joints"],
             "end_effectors": end_effector_positions_relative,
             "contact_forces": observation["contact_forces"],
-            "heading": np.arctan2(
+            "heading": np.array(np.arctan2(
                 observation["fly_orientation"][1], observation["fly_orientation"][0]
-            ),
+            )).reshape(1),
             "velocity": velocities_relative,
         }
 
@@ -238,3 +239,39 @@ class CobarFly(Fly):
         )
         pos_rotated = np.dot(rel_pos, rot_matrix.T)
         return pos_rotated
+
+    def _define_observation_space(self, arena: BaseArena):
+        _observation_space = {
+            "joints": gym.spaces.Box(
+                low=-np.inf, high=np.inf, shape=(3, len(self.actuated_joints))
+            ),
+            "end_effectors": gym.spaces.Box(low=-np.inf, high=np.inf, shape=(6, 2)),
+            "contact_forces": gym.spaces.Box(
+                low=-np.inf, high=np.inf, shape=(len(self.contact_sensor_placements), 3)
+            ),
+            "heading": gym.spaces.Box(
+                low=-np.pi, high=np.pi, shape=(1,)
+            ),
+            "velocity": gym.spaces.Box(
+                low=-np.inf, high=np.inf, shape=(1, 2)
+            ),
+        }
+        if self.enable_olfaction:
+            _observation_space["odor_intensity"] = gym.spaces.Box(
+                low=0,
+                high=np.inf,
+                shape=(2, len(self._antennae_sensors)),
+            )
+        if self.enable_vision:
+            _observation_space["vision"] = gym.spaces.Box(
+                low=0,
+                high=255,
+                shape=(2, self.config["vision"]["num_ommatidia_per_eye"], 2),
+            )
+            if self.render_raw_vision:
+                _observation_space["raw_vision"] = gym.spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(2, self.config["vision"]["raw_img_height_px"], self.config["vision"]["raw_img_width_px"], 3),
+                )
+        return gym.spaces.Dict(_observation_space)
