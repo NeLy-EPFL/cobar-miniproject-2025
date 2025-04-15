@@ -12,6 +12,12 @@ from cobar_miniproject.vision import (
 from flygym import YawOnlyCamera, SingleFlySimulation
 from flygym.arena import FlatTerrain
 
+import pygame
+import sys
+
+# Set a background color (R, G, B)
+background_color = (50, 150, 200)
+
 # OPTIONS
 # what to display as the simulation is running
 ONLY_CAMERA = 0
@@ -53,6 +59,16 @@ if __name__ == "__main__":
         play_speed=0.2,
     )
 
+    # Initialize Pygame
+    pygame.init()
+
+    # Set up the display
+    screen_width = 640
+    screen_height = 752
+    screen = pygame.display.set_mode((screen_width, screen_height))
+    pygame.display.set_caption("Simple Pygame Display")
+    screen.fill(background_color)
+
     sim = SingleFlySimulation(
         fly=fly,
         cameras=[cam],
@@ -68,7 +84,7 @@ if __name__ == "__main__":
     info_hist = []
 
     # create window
-    cv2.namedWindow("Simulation", cv2.WINDOW_NORMAL)
+    # cv2.namedWindow("Simulation", cv2.WINDOW_NORMAL)
 
     with tqdm.tqdm(desc="running simulation") as progress_bar:
         while True:
@@ -93,9 +109,12 @@ if __name__ == "__main__":
                     rendered_img = render_image_with_vision(
                         rendered_img, get_fly_vision_raw(fly), obs["odor_intensity"],
                     )
+                
                 rendered_img = cv2.cvtColor(rendered_img, cv2.COLOR_BGR2RGB)
-                cv2.imshow("Simulation", rendered_img)
-                cv2.waitKey(1)
+                # Fill the screen with the background color
+                pygame.surfarray.blit_array(screen, rendered_img.swapaxes(0, 1))
+                # cv2.imshow("Simulation", rendered_img)
+                # cv2.waitKey(1)
 
             if controller.quit:
                 print("Simulation terminated by user.")
@@ -105,7 +124,10 @@ if __name__ == "__main__":
                 break
 
             progress_bar.update()
+            # Update the display
+            pygame.display.flip()
 
+    pygame.quit()
     print("Simulation finished")
 
     # Save video
