@@ -3,6 +3,7 @@ import importlib
 import argparse
 import sys
 import dm_control.rl.control
+from flygym.camera import YawOnlyCamera
 import numpy as np
 import pandas as pd
 from tqdm import trange
@@ -10,6 +11,7 @@ from flygym import Camera
 from cobar_miniproject import levels
 from cobar_miniproject.cobar_fly import CobarFly
 from flygym import Camera, SingleFlySimulation
+
 
 
 def run_simulation(
@@ -23,6 +25,9 @@ def run_simulation(
     sys.path.append(str(submission_dir.parent))
     module = importlib.import_module(submission_dir.name)
     controller = module.controller.Controller()
+
+    print(f"TESTING CONTROLLER: {module}")
+
     timestep = 1e-4
 
     fly = CobarFly(
@@ -42,7 +47,7 @@ def run_simulation(
     
     cam_params = {"pos": (0, 0, 80)}
 
-    cam = Camera(
+    cam1 = Camera(
         attachment_point=level_arena.root_element.worldbody,
         camera_name="camera_top_zoomout",
         targeted_fly_names=[fly.name],
@@ -50,9 +55,16 @@ def run_simulation(
         play_speed=0.2,
     )
 
+    cam2 = YawOnlyCamera(
+        attachment_point=fly.model.worldbody,
+        camera_name="camera_back_track_game",
+        targeted_fly_names=[fly.name],
+        play_speed=0.2,
+    )
+
     sim = SingleFlySimulation(
         fly=fly,
-        cameras=[cam],
+        cameras=[cam1, cam2],
         timestep=timestep,
         arena=level_arena,
     )
@@ -72,6 +84,10 @@ def run_simulation(
             )
         except dm_control.rl.control.PhysicsError:
             result = (0, "physics error - probably fly got hit by the ball")
+            break
+        except:
+            result = (0, "error in controller")
+            break
         sim.render()
         if terminated or truncated:
             result = (0, "simulated terminated by error")
@@ -115,17 +131,30 @@ def run_simulation(
         # simulation took too long - didn't break the loop
         result = (0, "timed out")
 
-    # Save video
-    save_path = Path(output_dir) / f"level{level}_seed{seed}.mp4"
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    cam.save_video(save_path, stabilization_time=0)
+    total_timesteps = i
 
-    return result
+    # Save video
+    save_path_top_view = Path(output_dir) / f"level{level}_seed{seed}_top.mp4"
+    save_path_fly_view = Path(output_dir) / f"level{level}_seed{seed}_fly.mp4"
+    save_path_top_view.parent.mkdir(parents=True, exist_ok=True)
+    cam1.save_video(save_path_top_view, stabilization_time=0)
+    cam2.save_video(save_path_fly_view, stabilization_time=0)
+
+    return (*result, total_timesteps)
 
 
 if __name__ == "__main__":
     levels_to_test = list(range(5))
     seeds_to_test = [45, 38, 25]
+    seeds_to_test += [
+        19937347,
+        7794536,
+        8451236,
+        12868265,
+        16710355,
+        15656979,
+        12062889,
+    ]
 
     parser = argparse.ArgumentParser(description="Run the fly simulation.")
     parser.add_argument(
@@ -159,7 +188,7 @@ if __name__ == "__main__":
         results[level] = {}
 
         for seed in seeds_to_test:
-            points, reason = run_simulation(
+            points, reason, timesteps = run_simulation(
                 submission_dir=args.submission_dir,
                 level=level,
                 seed=seed,
@@ -168,12 +197,14 @@ if __name__ == "__main__":
                 progress=True,
             )
 
-            results[level][seed] = (points, reason)
-            print(f"Level {level}, seed {seed}: {points} points - {reason}")
+            results[level][seed] = (points, reason, timesteps)
+            print(
+                f"Level {level}, seed {seed}: {points} points - {reason} ({timesteps} timesteps)"
+            )
     
     print(f"Total points: {sum([seed_result[0] for level_results in results.values() for seed_result in level_results.values()]):.2f}/{len(levels_to_test)*len(seeds_to_test)}")
 
     print("All results:")
     print(results)
 
-    pd.DataFrame(results).to_csv("results.csv")
+    pd.DataFrame(results).to_csv(f"{args.output_dir}/results.csv")
